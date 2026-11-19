@@ -1,1 +1,83 @@
+-- NVS EGG HUNTER
+local Players = game:GetService("Players")
+local WS = game:GetService("Workspace")
+local player = Players.LocalPlayer
 
+local gui = Instance.new("ScreenGui")
+gui.Name = "NVSEggHunter"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame", gui)
+frame.Size = UDim2.fromOffset(300, 350)
+frame.Position = UDim2.new(0.5, -150, 0.5, -175)
+frame.BackgroundColor3 = Color3.fromRGB(12, 20, 16)
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
+
+local border = Instance.new("UIStroke", frame)
+border.Color = Color3.fromRGB(0, 255, 100)
+border.Thickness = 2
+
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, 0, 0, 40)
+title.BackgroundTransparency = 1
+title.Text = "NVS EGG HUNTER"
+title.TextColor3 = Color3.fromRGB(0, 255, 100)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 19
+
+local scan = Instance.new("TextButton", frame)
+scan.Size = UDim2.new(1, -20, 0, 38)
+scan.Position = UDim2.fromOffset(10, 45)
+scan.Text = "PROCURAR OVOS"
+scan.Font = Enum.Font.GothamBold
+scan.TextSize = 14
+scan.TextColor3 = Color3.new(1, 1, 1)
+scan.BackgroundColor3 = Color3.fromRGB(20, 130, 65)
+Instance.new("UICorner", scan).CornerRadius = UDim.new(0, 8)
+
+local results = Instance.new("ScrollingFrame", frame)
+results.Position = UDim2.fromOffset(10, 92)
+results.Size = UDim2.new(1, -20, 1, -102)
+results.BackgroundColor3 = Color3.fromRGB(22, 30, 25)
+results.BorderSizePixel = 0
+results.ScrollBarThickness = 5
+Instance.new("UICorner", results).CornerRadius = UDim.new(0, 8)
+
+local layout = Instance.new("UIListLayout", results)
+layout.Padding = UDim.new(0, 5)
+
+scan.MouseButton1Click:Connect(function()
+    for _, v in ipairs(results:GetChildren()) do
+        if v:IsA("TextLabel") then v:Destroy() end
+    end
+
+    local found = 0
+
+    for _, obj in ipairs(WS:GetDescendants()) do
+        local name = string.lower(obj.Name)
+        local isEgg = string.find(name, "egg") or string.find(name, "ovo")
+
+        if isEgg and (obj:IsA("Model") or obj:IsA("BasePart") or obj:IsA("Tool")) then
+            found += 1
+
+            if found <= 100 then
+                local rarity = obj:GetAttribute("Rarity") or obj:GetAttribute("Raridade") or "Desconhecida"
+                local value = obj:GetAttribute("EggValue") or obj:GetAttribute("Value") or obj:GetAttribute("Price") or "?"
+
+                local label = Instance.new("TextLabel", results)
+                label.Size = UDim2.new(1, -8, 0, 35)
+                label.BackgroundColor3 = Color3.fromRGB(35, 55, 40)
+                label.TextColor3 = Color3.new(1, 1, 1)
+                label.Font = Enum.Font.Gotham
+                label.TextSize = 11
+                label.Text = obj.Name .. " | " .. tostring(rarity) .. " | " .. tostring(value)
+            end
+        end
+    end
+
+    results.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 10)
+    scan.Text = found .. " OBJETO(S) ENCONTRADO(S)"
+    task.wait(2)
+    scan.Text = "PROCURAR OVOS"
+end)
