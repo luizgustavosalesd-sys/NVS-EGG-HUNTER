@@ -1,541 +1,298 @@
-
---[[
-    NVS EGG HUNTER 2.1
-    Scanner experimental de objetos visíveis
-    Interface NVS - Preto e Verde
-]]
+NVS EGG HUNTER 3.0
+-- Scanner local de ovos visiveis ao cliente.
+-- Nao acessa dados ocultos nem procura servidores globalmente.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local UserInputService = game:GetService("UserInputService")
+local UIS = game:GetService("UserInputService")
+local player = Players.LocalPlayer
 
-local Player = Players.LocalPlayer
-if not Player then
-    warn("[NVS] Jogador não encontrado.")
-    return
-end
-
-local PlayerGui = Player:WaitForChild("PlayerGui")
-
-local old = PlayerGui:FindFirstChild("NVSEggHunter")
-if old then
-    old:Destroy()
-end
-
-local GREEN = Color3.fromRGB(0, 235, 105)
-local DARK = Color3.fromRGB(10, 16, 13)
-local PANEL = Color3.fromRGB(21, 31, 25)
-local WHITE = Color3.fromRGB(245, 245, 245)
-
-local rarityOrder = {
-    common = 1,
-    uncommon = 2,
-    rare = 3,
-    epic = 4,
-    legendary = 5,
-    mythic = 6,
-    divine = 7,
-    secret = 8,
-    celestial = 9
-}
-
--- Correção: palavras com acentos são chaves entre colchetes.
-local rarityAliases = {
-    comum = "common",
-    incomum = "uncommon",
-    raro = "rare",
-    ["epico"] = "epic",
-    ["épico"] = "epic",
-    lendario = "legendary",
-    ["lendário"] = "legendary",
-    mitico = "mythic",
-    ["mítico"] = "mythic",
-    divino = "divine",
-    secreto = "secret"
-}
-
-local function rarityScore(value)
-    local text = string.lower(tostring(value or ""))
-
-    for alias, english in pairs(rarityAliases) do
-        if string.find(text, alias, 1, true) then
-            return rarityOrder[english] or 0
-        end
-    end
-
-    for name, score in pairs(rarityOrder) do
-        if string.find(text, name, 1, true) then
-            return score
-        end
-    end
-
-    return 0
-end
-
-local function readNumber(value)
-    if typeof(value) == "number" then
-        return value
-    end
-
-    local text = tostring(value or "")
-    text = text:gsub(",", "")
-
-    local number, suffix =
-        text:lower():match("([%d%.]+)%s*([kmbt]?)")
-
-    number = tonumber(number)
-    if not number then
-        return nil
-    end
-
-    local multipliers = {
-        k = 1e3,
-        m = 1e6,
-        b = 1e9,
-        t = 1e12
-    }
-
-    return number * (multipliers[suffix] or 1)
-end
-
-local function readInfo(object, keys)
-    for _, key in ipairs(keys) do
-        local success, attribute = pcall(function()
-            return object:GetAttribute(key)
-        end)
-
-        if success and attribute ~= nil then
-            return attribute
-        end
-
-        local child = object:FindFirstChild(key, true)
-
-        if child and child:IsA("ValueBase") then
-            return child.Value
-        end
-    end
-
-    return nil
-end
-
-local function isCandidate(object)
-    local name = string.lower(object.Name)
-
-    if not (
-        object:IsA("Model")
-        or object:IsA("Tool")
-        or object:IsA("BasePart")
-    ) then
-        return false
-    end
-
-    local blocked = {
-        "fitbounds",
-        "spotbottom",
-        "eggpoint",
-        "carrybounds",
-        "spawn",
-        "eggzone",
-        "eggarea",
-        "marker",
-        "detector",
-        "hitbox"
-    }
-
-    for _, word in ipairs(blocked) do
-        if string.find(name, word, 1, true) then
-            return false
-        end
-    end
-
-    return string.find(name, "egg", 1, true) ~= nil
-        or string.find(name, "ovo", 1, true) ~= nil
-end
-
--- INTERFACE
+local old
+pcall(function()
+    old = game:GetService("CoreGui"):FindFirstChild("NVSEggHunter")
+    if old then old:Destroy() end
+end)
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "NVSEggHunter"
 gui.ResetOnSpawn = false
-gui.DisplayOrder = 999
-gui.Parent = PlayerGui
+pcall(function() gui.Parent = game:GetService("CoreGui") end)
+if not gui.Parent then gui.Parent = player:WaitForChild("PlayerGui") end
 
-local main = Instance.new("Frame")
-main.Name = "Main"
-main.Size = UDim2.new(0.88, 0, 0.72, 0)
-main.Position = UDim2.new(0.5, 0, 0.5, 0)
-main.AnchorPoint = Vector2.new(0.5, 0.5)
-main.BackgroundColor3 = DARK
-main.BorderSizePixel = 0
-main.Parent = gui
+local GREEN = Color3.fromRGB(0,255,125)
+local DARK = Color3.fromRGB(10,13,16)
+local PANEL = Color3.fromRGB(18,24,22)
+local WHITE = Color3.fromRGB(240,255,245)
+local GRAY = Color3.fromRGB(150,165,155)
 
-local constraint = Instance.new("UISizeConstraint")
-constraint.MinSize = Vector2.new(290, 350)
-constraint.MaxSize = Vector2.new(560, 620)
-constraint.Parent = main
-
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 13)
-corner.Parent = main
-
-local stroke = Instance.new("UIStroke")
-stroke.Color = GREEN
-stroke.Thickness = 2
-stroke.Parent = main
-
-local header = Instance.new("Frame")
-header.Size = UDim2.new(1, 0, 0, 55)
-header.BackgroundColor3 = Color3.fromRGB(13, 40, 23)
-header.BorderSizePixel = 0
-header.Parent = main
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -55, 1, 0)
-title.Position = UDim2.fromOffset(12, 0)
-title.BackgroundTransparency = 1
-title.Text = "NVS EGG HUNTER 2.1"
-title.TextColor3 = GREEN
-title.Font = Enum.Font.GothamBold
-title.TextSize = 19
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = header
-
-local close = Instance.new("TextButton")
-close.Size = UDim2.fromOffset(40, 38)
-close.Position = UDim2.new(1, -46, 0, 8)
-close.BackgroundColor3 = Color3.fromRGB(150, 35, 35)
-close.Text = "X"
-close.TextColor3 = WHITE
-close.TextSize = 18
-close.Font = Enum.Font.GothamBold
-close.Parent = header
-
-Instance.new("UICorner", close).CornerRadius = UDim.new(0, 7)
-
-close.MouseButton1Click:Connect(function()
-    gui:Destroy()
-end)
-
-local status = Instance.new("TextLabel")
-status.Size = UDim2.new(1, -20, 0, 27)
-status.Position = UDim2.fromOffset(10, 60)
-status.BackgroundTransparency = 1
-status.Text = "PRONTO PARA PROCURAR"
-status.TextColor3 = WHITE
-status.Font = Enum.Font.Gotham
-status.TextSize = 12
-status.Parent = main
-
-local function makeButton(text, position, size)
-    local button = Instance.new("TextButton")
-    button.Size = size
-    button.Position = position
-    button.BackgroundColor3 = Color3.fromRGB(15, 125, 60)
-    button.Text = text
-    button.TextColor3 = WHITE
-    button.Font = Enum.Font.GothamBold
-    button.TextSize = 12
-    button.Parent = main
-
-    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 7)
-
-    return button
+local function make(class, props, parent)
+    local obj = Instance.new(class)
+    for k,v in pairs(props) do obj[k] = v end
+    obj.Parent = parent
+    return obj
 end
 
-local scanButton = makeButton(
-    "PROCURAR OVOS",
-    UDim2.fromOffset(10, 92),
-    UDim2.new(1, -20, 0, 38)
-)
+local main = make("Frame", {
+    Size=UDim2.fromOffset(560,390),
+    Position=UDim2.new(.5,-280,.5,-195),
+    BackgroundColor3=DARK, BorderSizePixel=0
+}, gui)
+make("UICorner",{CornerRadius=UDim.new(0,12)},main)
+make("UIStroke",{Color=GREEN,Thickness=1.5},main)
 
-local sortButton = makeButton(
-    "ORDEM: RARIDADE",
-    UDim2.fromOffset(10, 137),
-    UDim2.new(0.48, -5, 0, 35)
-)
+local header = make("Frame",{
+    Size=UDim2.new(1,0,0,52),
+    BackgroundColor3=Color3.fromRGB(7,20,14),
+    BorderSizePixel=0
+},main)
+make("UICorner",{CornerRadius=UDim.new(0,12)},header)
+make("TextLabel",{
+    Size=UDim2.new(1,-20,1,0),Position=UDim2.fromOffset(15,0),
+    BackgroundTransparency=1,Text="NVS  EGG HUNTER",
+    TextColor3=GREEN,Font=Enum.Font.GothamBold,TextSize=20,
+    TextXAlignment=Enum.TextXAlignment.Left
+},header)
 
-local filterButton = makeButton(
-    "MÍNIMO: TODOS",
-    UDim2.new(0.52, 5, 0, 137),
-    UDim2.new(0.48, -15, 0, 35)
-)
+local menu = make("Frame",{
+    Size=UDim2.new(0,140,1,-65),Position=UDim2.fromOffset(8,58),
+    BackgroundColor3=PANEL,BorderSizePixel=0
+},main)
+make("UICorner",{CornerRadius=UDim.new(0,8)},menu)
 
-local search = Instance.new("TextBox")
-search.Size = UDim2.new(1, -20, 0, 35)
-search.Position = UDim2.fromOffset(10, 180)
-search.BackgroundColor3 = PANEL
-search.PlaceholderText = "Buscar pelo nome do ovo..."
-search.PlaceholderColor3 = Color3.fromRGB(160, 160, 160)
-search.Text = ""
-search.TextColor3 = WHITE
-search.Font = Enum.Font.Gotham
-search.TextSize = 13
-search.ClearTextOnFocus = false
-search.Parent = main
+local content = make("Frame",{
+    Size=UDim2.new(1,-160,1,-65),Position=UDim2.fromOffset(150,58),
+    BackgroundColor3=PANEL,BorderSizePixel=0
+},main)
+make("UICorner",{CornerRadius=UDim.new(0,8)},content)
 
-Instance.new("UICorner", search).CornerRadius = UDim.new(0, 7)
+local pages = {}
+local function page(name)
+    local p = make("ScrollingFrame",{
+        Name=name,Size=UDim2.new(1,-14,1,-14),Position=UDim2.fromOffset(7,7),
+        BackgroundTransparency=1,BorderSizePixel=0,ScrollBarThickness=3,
+        ScrollBarImageColor3=GREEN,CanvasSize=UDim2.new(0,0,0,0),
+        AutomaticCanvasSize=Enum.AutomaticSize.Y,Visible=false
+    },content)
+    make("UIListLayout",{Padding=UDim.new(0,7),SortOrder=Enum.SortOrder.LayoutOrder},p)
+    pages[name]=p
+    return p
+end
 
-local results = Instance.new("ScrollingFrame")
-results.Size = UDim2.new(1, -20, 1, -270)
-results.Position = UDim2.fromOffset(10, 222)
-results.BackgroundColor3 = Color3.fromRGB(16, 24, 19)
-results.BorderSizePixel = 0
-results.ScrollBarThickness = 5
-results.AutomaticCanvasSize = Enum.AutomaticSize.Y
-results.CanvasSize = UDim2.new(0, 0, 0, 0)
-results.Parent = main
+local function label(parent,text,height,color)
+    local l=make("TextLabel",{
+        Size=UDim2.new(1,-5,0,height or 34),BackgroundColor3=Color3.fromRGB(25,34,29),
+        BorderSizePixel=0,Text=text,TextColor3=color or WHITE,
+        Font=Enum.Font.Gotham,TextSize=12,TextWrapped=true,
+        TextXAlignment=Enum.TextXAlignment.Left
+    },parent)
+    make("UICorner",{CornerRadius=UDim.new(0,5)},l)
+    make("UIPadding",{PaddingLeft=UDim.new(0,9),PaddingRight=UDim.new(0,6)},l)
+    return l
+end
 
-Instance.new("UICorner", results).CornerRadius = UDim.new(0, 8)
+local function action(parent,text,callback)
+    local b=make("TextButton",{
+        Size=UDim2.new(1,-5,0,36),BackgroundColor3=Color3.fromRGB(0,75,43),
+        BorderSizePixel=0,Text=text,TextColor3=WHITE,
+        Font=Enum.Font.GothamBold,TextSize=12
+    },parent)
+    make("UICorner",{CornerRadius=UDim.new(0,6)},b)
+    b.MouseButton1Click:Connect(callback)
+    return b
+end
 
-local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 5)
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Parent = results
+local home=page("Dashboard")
+local finder=page("Egg Finder")
+local rare=page("Rare Eggs")
+local server=page("NVS Finder")
+local events=page("Events")
+local settings=page("Settings")
 
-local padding = Instance.new("UIPadding")
-padding.PaddingTop = UDim.new(0, 6)
-padding.PaddingBottom = UDim.new(0, 6)
-padding.PaddingLeft = UDim.new(0, 6)
-padding.PaddingRight = UDim.new(0, 6)
-padding.Parent = results
+local function show(name)
+    for n,p in pairs(pages) do p.Visible=(n==name) end
+end
 
-local sortMode = "RARIDADE"
+local function menuButton(text,name)
+    local b=make("TextButton",{
+        Size=UDim2.new(1,-12,0,36),BackgroundColor3=Color3.fromRGB(25,38,31),
+        BorderSizePixel=0,Text=text,TextColor3=WHITE,
+        Font=Enum.Font.GothamBold,TextSize=11
+    },menu)
+    make("UICorner",{CornerRadius=UDim.new(0,6)},b)
+    b.MouseButton1Click:Connect(function() show(name) end)
+end
 
-local filterLevels = {
-    {"TODOS", 0},
-    {"RARE", 3},
-    {"EPIC", 4},
-    {"LEGENDARY", 5},
-    {"MYTHIC", 6},
-    {"DIVINE", 7},
-    {"SECRET", 8}
-}
+menuButton("DASHBOARD","Dashboard")
+menuButton("EGG FINDER","Egg Finder")
+menuButton("RARE EGGS","Rare Eggs")
+menuButton("NVS FINDER","NVS Finder")
+menuButton("EVENTS","Events")
+menuButton("SETTINGS","Settings")
 
-local filterIndex = 1
-local foundObjects = {}
+label(home,"NVS EGG HUNTER  |  CONTROL CENTER",40,GREEN)
+label(home,"Scanner local de ovos e objetos replicados.",38)
+label(home,"Prioridade: raridade e valor informado pelo jogo.",45)
+label(home,"Use EGG FINDER para iniciar uma busca.",38)
 
-local function clearResults()
-    for _, child in ipairs(results:GetChildren()) do
-        if child:IsA("Frame") then
-            child:Destroy()
+local eggs={}
+local searchText=""
+local results=make("Frame",{
+    Size=UDim2.new(1,-5,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+    BackgroundTransparency=1
+},finder)
+make("UIListLayout",{Padding=UDim.new(0,5)},results)
+
+local search=make("TextBox",{
+    Size=UDim2.new(1,-5,0,35),BackgroundColor3=Color3.fromRGB(28,40,33),
+    Text="",PlaceholderText="Pesquisar ovo...",TextColor3=WHITE,
+    PlaceholderColor3=GRAY,Font=Enum.Font.Gotham,TextSize=12,
+    ClearTextOnFocus=false
+},finder)
+make("UICorner",{CornerRadius=UDim.new(0,6)},search)
+
+local status=label(finder,"Aguardando scanner...",30,GREEN)
+
+local function readData(obj,names)
+    for _,name in ipairs(names) do
+        local v=obj:GetAttribute(name)
+        if v~=nil then return v end
+        local child=obj:FindFirstChild(name)
+        if child and (child:IsA("StringValue") or child:IsA("NumberValue") or child:IsA("IntValue")) then
+            return child.Value
         end
     end
+    return nil
 end
-
-local function renderResults()
-    clearResults()
-
-    local query = string.lower(search.Text)
-    local minimum = filterLevels[filterIndex][2]
-    local displayed = 0
-
-    table.sort(foundObjects, function(a, b)
-        if sortMode == "VALOR" then
-            return (a.valueNumber or -1) >
-                (b.valueNumber or -1)
-        end
-
-        return a.score > b.score
-    end)
-
-    for _, item in ipairs(foundObjects) do
-        local matchesName = query == ""
-            or string.find(
-                string.lower(item.name),
-                query,
-                1,
-                true
-            )
-
-        if matchesName and item.score >= minimum then
-            displayed += 1
-
-            local card = Instance.new("Frame")
-            card.Size = UDim2.new(1, -5, 0, 62)
-            card.BackgroundColor3 = Color3.fromRGB(31, 48, 36)
-            card.BorderSizePixel = 0
-            card.LayoutOrder = displayed
-            card.Parent = results
-
-            Instance.new("UICorner", card).CornerRadius =
-                UDim.new(0, 6)
-
-            local name = Instance.new("TextLabel")
-            name.Size = UDim2.new(1, -12, 0, 25)
-            name.Position = UDim2.fromOffset(7, 4)
-            name.BackgroundTransparency = 1
-            name.Text = item.name
-            name.TextColor3 = GREEN
-            name.Font = Enum.Font.GothamBold
-            name.TextSize = 12
-            name.TextXAlignment = Enum.TextXAlignment.Left
-            name.TextTruncate = Enum.TextTruncate.AtEnd
-            name.Parent = card
-
-            local info = Instance.new("TextLabel")
-            info.Size = UDim2.new(1, -12, 0, 23)
-            info.Position = UDim2.fromOffset(7, 31)
-            info.BackgroundTransparency = 1
-            info.Text = "Raridade: " .. item.rarity
-                .. " | Valor: " .. item.value
-            info.TextColor3 = WHITE
-            info.Font = Enum.Font.Gotham
-            info.TextSize = 10
-            info.TextXAlignment = Enum.TextXAlignment.Left
-            info.TextTruncate = Enum.TextTruncate.AtEnd
-            info.Parent = card
-        end
-    end
-
-    status.Text = displayed .. " RESULTADO(S) EXIBIDO(S)"
-end
-
-local scanning = false
 
 local function scan()
-    if scanning then
-        return
-    end
-
-    scanning = true
-    scanButton.Text = "PROCURANDO..."
-    scanButton.Active = false
-    status.Text = "ANALISANDO OBJETOS VISÍVEIS..."
-    foundObjects = {}
-
-    task.spawn(function()
-        local success, err = pcall(function()
-            local descendants = Workspace:GetDescendants()
-            local seen = {}
-
-            for _, object in ipairs(descendants) do
-                if isCandidate(object) and not seen[object] then
-                    seen[object] = true
-
-                    local rarity = readInfo(object, {
-                        "Rarity",
-                        "Raridade",
-                        "EggRarity"
-                    })
-
-                    local value = readInfo(object, {
-                        "EggValue",
-                        "Value",
-                        "Price",
-                        "Cost",
-                        "Worth"
-                    })
-
-                    table.insert(foundObjects, {
-                        name = object.Name,
-                        rarity = tostring(
-                            rarity or "Não identificada"
-                        ),
-                        value = tostring(
-                            value or "Não disponível"
-                        ),
-                        valueNumber = readNumber(value),
-                        score = rarityScore(rarity)
-                    })
-                end
-            end
-        end)
-
-        if not success then
-            status.Text = "ERRO NA BUSCA: " .. tostring(err)
-        else
-            renderResults()
-
-            if #foundObjects == 0 then
-                status.Text = "NENHUM OVO IDENTIFICADO"
-            end
+    eggs={}
+    for _,obj in ipairs(Workspace:GetDescendants()) do
+        local n=string.lower(obj.Name)
+        if (string.find(n,"egg") or string.find(n,"ovo"))
+            and (obj:IsA("Model") or obj:IsA("Tool") or obj:IsA("BasePart")) then
+            local value=tonumber(readData(obj,{"EggValue","Value","Price","Cost","Worth","Valor"})) or 0
+            local rarity=tostring(readData(obj,{"Rarity","Raridade","EggRarity"}) or "Desconhecida")
+            table.insert(eggs,{name=obj.Name,value=value,rarity=rarity})
         end
-
-        scanButton.Text = "ATUALIZAR BUSCA"
-        scanButton.Active = true
-        scanning = false
-    end)
+    end
+    table.sort(eggs,function(a,b) return a.value>b.value end)
 end
 
-scanButton.MouseButton1Click:Connect(scan)
-
-sortButton.MouseButton1Click:Connect(function()
-    if sortMode == "RARIDADE" then
-        sortMode = "VALOR"
-    else
-        sortMode = "RARIDADE"
+local function clearResults()
+    for _,v in ipairs(results:GetChildren()) do
+        if v:IsA("TextLabel") then v:Destroy() end
     end
+end
 
-    sortButton.Text = "ORDEM: " .. sortMode
-    renderResults()
-end)
-
-filterButton.MouseButton1Click:Connect(function()
-    filterIndex += 1
-
-    if filterIndex > #filterLevels then
-        filterIndex = 1
+local function render(rareOnly)
+    clearResults()
+    local count=0
+    for _,egg in ipairs(eggs) do
+        local matches=(searchText=="" or string.find(string.lower(egg.name),string.lower(searchText),1,true))
+        local r=string.lower(egg.rarity)
+        local isRare=string.find(r,"rare") or string.find(r,"legend") or string.find(r,"myth") or string.find(r,"secret")
+        if matches and (not rareOnly or isRare) then
+            count=count+1
+            if count<=60 then label(results,egg.name.." | "..egg.rarity.." | Valor: "..egg.value,32,GREEN) end
+        end
     end
-
-    filterButton.Text =
-        "MÍNIMO: " .. filterLevels[filterIndex][1]
-
-    renderResults()
-end)
+    status.Text="Resultados encontrados: "..count
+end
 
 search:GetPropertyChangedSignal("Text"):Connect(function()
-    renderResults()
+    searchText=search.Text
+    render(false)
 end)
 
-local footer = Instance.new("TextLabel")
-footer.Size = UDim2.new(1, -20, 0, 20)
-footer.Position = UDim2.new(0, 10, 1, -23)
-footer.BackgroundTransparency = 1
-footer.Text = "NVS E-SPORT | SCANNER EXPERIMENTAL"
-footer.TextColor3 = Color3.fromRGB(130, 150, 135)
-footer.Font = Enum.Font.Gotham
-footer.TextSize = 9
-footer.Parent = main
+action(finder,"INICIAR SCANNER",function()
+    status.Text="Escaneando objetos visiveis..."
+    task.spawn(function()
+        scan()
+        render(false)
+    end)
+end)
 
--- Arrastar painel pelo cabeçalho
+label(rare,"RARE EGGS SCANNER",40,GREEN)
+local rareStatus=label(rare,"Clique para procurar raridades conhecidas.",40)
+action(rare,"PROCURAR OVOS RAROS",function()
+    task.spawn(function()
+        scan()
+        local count=0
+        for _,v in ipairs(rare:GetChildren()) do
+            if v:IsA("TextLabel") and v~=rareStatus then v:Destroy() end
+        end
+        for _,egg in ipairs(eggs) do
+            local r=string.lower(egg.rarity)
+            if string.find(r,"rare") or string.find(r,"legend") or string.find(r,"myth") or string.find(r,"secret") then
+                count=count+1
+                if count<=50 then label(rare,egg.name.." | "..egg.rarity.." | "..egg.value,32,GREEN) end
+            end
+        end
+        rareStatus.Text="Ovos raros identificados: "..count
+    end)
+end)
 
-local dragging = false
-local dragStart
-local startPosition
+label(server,"NVS FINDER  |  SERVER SEARCH",40,GREEN)
+label(server,"Busca global entre servidores ainda nao conectada.",50,Color3.fromRGB(255,190,70))
+label(server,"Para encontrar ovos em outros servidores e preciso de uma API real que publique descobertas e codigos de servidor. Este painel nao inventa resultados.",95)
+action(server,"VERIFICAR STATUS",function()
+    label(server,"STATUS: aguardando configuracao de API externa.",40,GREEN)
+end)
 
+label(events,"NVS EVENT CENTER",40,GREEN)
+label(events,"Temporizador manual de evento (minutos):",35)
+local minutes=make("TextBox",{
+    Size=UDim2.new(1,-5,0,35),BackgroundColor3=Color3.fromRGB(28,40,33),
+    Text="25",TextColor3=WHITE,Font=Enum.Font.Gotham,TextSize=13
+},events)
+make("UICorner",{CornerRadius=UDim.new(0,6)},minutes)
+local timerLabel=label(events,"Temporizador parado.",32)
+local running=false
+action(events,"INICIAR TEMPORIZADOR",function()
+    if running then return end
+    local total=tonumber(minutes.Text)
+    if not total or total<=0 then timerLabel.Text="Digite minutos validos."; return end
+    running=true
+    task.spawn(function()
+        local seconds=math.floor(total*60)
+        while seconds>0 and running do
+            timerLabel.Text=string.format("Tempo restante: %02d:%02d",math.floor(seconds/60),seconds%60)
+            task.wait(1)
+            seconds=seconds-1
+        end
+        if running then timerLabel.Text="TEMPO FINALIZADO!" end
+        running=false
+    end)
+end)
+action(events,"PARAR TEMPORIZADOR",function()
+    running=false
+    timerLabel.Text="Temporizador parado."
+end)
+
+label(settings,"NVS CONFIGURACOES",40,GREEN)
+label(settings,"Versao: 3.0",32)
+label(settings,"Tema: Black / Neon Green",32)
+action(settings,"FECHAR NVS HUNTER",function() gui:Destroy() end)
+
+-- Arrastar a janela pelo cabecalho (mouse e toque)
+local dragging=false
+local dragInput,dragStart,startPos
 header.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-
-        dragging = true
-        dragStart = input.Position
-        startPosition = main.Position
+    if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
+        dragging=true
+        dragStart=input.Position
+        startPos=main.Position
+        input.Changed:Connect(function()
+            if input.UserInputState==Enum.UserInputState.End then dragging=false end
+        end)
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then
+        local delta=input.Position-dragStart
+        main.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+delta.X,startPos.Y.Scale,startPos.Y.Offset+delta.Y)
     end
 end)
 
-header.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-
-        dragging = false
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if dragging and (
-        input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch
-    ) then
-
-        local delta = input.Position - dragStart
-
-        main.Position = UDim2.new(
-            startPosition.X.Scale,
-            startPosition.X.Offset + delta.X,
-            startPosition.Y.Scale,
-            startPosition.Y.Offset + delta.Y
-        )
-    end
-end)
-
-print("[NVS EGG HUNTER 2.1] Interface carregada.")
+show("Dashboard")
+print("[NVS EGG HUNTER 3.0] Interface carregada.")
