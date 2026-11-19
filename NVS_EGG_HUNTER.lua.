@@ -1,17 +1,22 @@
 
 --[[
-    NVS EGG HUNTER 2.0
+    NVS EGG HUNTER 2.1
     Scanner experimental de objetos visíveis
     Interface NVS - Preto e Verde
 ]]
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
 
 local Player = Players.LocalPlayer
+if not Player then
+    warn("[NVS] Jogador não encontrado.")
+    return
+end
+
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
--- Evita duplicar a interface
 local old = PlayerGui:FindFirstChild("NVSEggHunter")
 if old then
     old:Destroy()
@@ -34,22 +39,24 @@ local rarityOrder = {
     celestial = 9
 }
 
+-- Correção: palavras com acentos são chaves entre colchetes.
 local rarityAliases = {
     comum = "common",
     incomum = "uncommon",
     raro = "rare",
-    epico = "epic",
-    épico = "epic",
+    ["epico"] = "epic",
+    ["épico"] = "epic",
     lendario = "legendary",
-    lendário = "legendary",
+    ["lendário"] = "legendary",
     mitico = "mythic",
-    mítico = "mythic",
+    ["mítico"] = "mythic",
     divino = "divine",
     secreto = "secret"
 }
 
 local function rarityScore(value)
     local text = string.lower(tostring(value or ""))
+
     for alias, english in pairs(rarityAliases) do
         if string.find(text, alias, 1, true) then
             return rarityOrder[english] or 0
@@ -72,7 +79,9 @@ local function readNumber(value)
 
     local text = tostring(value or "")
     text = text:gsub(",", "")
-    local number, suffix = text:lower():match("([%d%.]+)%s*([kmbt]?)")
+
+    local number, suffix =
+        text:lower():match("([%d%.]+)%s*([kmbt]?)")
 
     number = tonumber(number)
     if not number then
@@ -91,12 +100,16 @@ end
 
 local function readInfo(object, keys)
     for _, key in ipairs(keys) do
-        local attribute = object:GetAttribute(key)
-        if attribute ~= nil then
+        local success, attribute = pcall(function()
+            return object:GetAttribute(key)
+        end)
+
+        if success and attribute ~= nil then
             return attribute
         end
 
         local child = object:FindFirstChild(key, true)
+
         if child and child:IsA("ValueBase") then
             return child.Value
         end
@@ -108,9 +121,11 @@ end
 local function isCandidate(object)
     local name = string.lower(object.Name)
 
-    if not (object:IsA("Model")
+    if not (
+        object:IsA("Model")
         or object:IsA("Tool")
-        or object:IsA("BasePart")) then
+        or object:IsA("BasePart")
+    ) then
         return false
     end
 
@@ -137,7 +152,8 @@ local function isCandidate(object)
         or string.find(name, "ovo", 1, true) ~= nil
 end
 
--- Interface
+-- INTERFACE
+
 local gui = Instance.new("ScreenGui")
 gui.Name = "NVSEggHunter"
 gui.ResetOnSpawn = false
@@ -177,7 +193,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -55, 1, 0)
 title.Position = UDim2.fromOffset(12, 0)
 title.BackgroundTransparency = 1
-title.Text = "NVS EGG HUNTER 2.0"
+title.Text = "NVS EGG HUNTER 2.1"
 title.TextColor3 = GREEN
 title.Font = Enum.Font.GothamBold
 title.TextSize = 19
@@ -210,7 +226,6 @@ status.Font = Enum.Font.Gotham
 status.TextSize = 12
 status.Parent = main
 
--- Botões
 local function makeButton(text, position, size)
     local button = Instance.new("TextButton")
     button.Size = size
@@ -223,6 +238,7 @@ local function makeButton(text, position, size)
     button.Parent = main
 
     Instance.new("UICorner", button).CornerRadius = UDim.new(0, 7)
+
     return button
 end
 
@@ -284,6 +300,7 @@ padding.PaddingRight = UDim.new(0, 6)
 padding.Parent = results
 
 local sortMode = "RARIDADE"
+
 local filterLevels = {
     {"TODOS", 0},
     {"RARE", 3},
@@ -314,7 +331,8 @@ local function renderResults()
 
     table.sort(foundObjects, function(a, b)
         if sortMode == "VALOR" then
-            return (a.valueNumber or -1) > (b.valueNumber or -1)
+            return (a.valueNumber or -1) >
+                (b.valueNumber or -1)
         end
 
         return a.score > b.score
@@ -322,7 +340,12 @@ local function renderResults()
 
     for _, item in ipairs(foundObjects) do
         local matchesName = query == ""
-            or string.find(string.lower(item.name), query, 1, true)
+            or string.find(
+                string.lower(item.name),
+                query,
+                1,
+                true
+            )
 
         if matchesName and item.score >= minimum then
             displayed += 1
@@ -334,7 +357,8 @@ local function renderResults()
             card.LayoutOrder = displayed
             card.Parent = results
 
-            Instance.new("UICorner", card).CornerRadius = UDim.new(0, 6)
+            Instance.new("UICorner", card).CornerRadius =
+                UDim.new(0, 6)
 
             local name = Instance.new("TextLabel")
             name.Size = UDim2.new(1, -12, 0, 25)
@@ -366,46 +390,70 @@ local function renderResults()
     status.Text = displayed .. " RESULTADO(S) EXIBIDO(S)"
 end
 
+local scanning = false
+
 local function scan()
+    if scanning then
+        return
+    end
+
+    scanning = true
     scanButton.Text = "PROCURANDO..."
     scanButton.Active = false
     status.Text = "ANALISANDO OBJETOS VISÍVEIS..."
     foundObjects = {}
 
     task.spawn(function()
-        local descendants = Workspace:GetDescendants()
-        local seen = {}
+        local success, err = pcall(function()
+            local descendants = Workspace:GetDescendants()
+            local seen = {}
 
-        for _, object in ipairs(descendants) do
-            if isCandidate(object) and not seen[object] then
-                seen[object] = true
+            for _, object in ipairs(descendants) do
+                if isCandidate(object) and not seen[object] then
+                    seen[object] = true
 
-                local rarity = readInfo(object, {
-                    "Rarity", "Raridade", "EggRarity"
-                })
+                    local rarity = readInfo(object, {
+                        "Rarity",
+                        "Raridade",
+                        "EggRarity"
+                    })
 
-                local value = readInfo(object, {
-                    "EggValue", "Value", "Price", "Cost", "Worth"
-                })
+                    local value = readInfo(object, {
+                        "EggValue",
+                        "Value",
+                        "Price",
+                        "Cost",
+                        "Worth"
+                    })
 
-                table.insert(foundObjects, {
-                    name = object.Name,
-                    rarity = tostring(rarity or "Não identificada"),
-                    value = tostring(value or "Não disponível"),
-                    valueNumber = readNumber(value),
-                    score = rarityScore(rarity)
-                })
+                    table.insert(foundObjects, {
+                        name = object.Name,
+                        rarity = tostring(
+                            rarity or "Não identificada"
+                        ),
+                        value = tostring(
+                            value or "Não disponível"
+                        ),
+                        valueNumber = readNumber(value),
+                        score = rarityScore(rarity)
+                    })
+                end
+            end
+        end)
+
+        if not success then
+            status.Text = "ERRO NA BUSCA: " .. tostring(err)
+        else
+            renderResults()
+
+            if #foundObjects == 0 then
+                status.Text = "NENHUM OVO IDENTIFICADO"
             end
         end
 
-        renderResults()
-
         scanButton.Text = "ATUALIZAR BUSCA"
         scanButton.Active = true
-
-        if #foundObjects == 0 then
-            status.Text = "NENHUM OVO IDENTIFICADO"
-        end
+        scanning = false
     end)
 end
 
@@ -429,7 +477,9 @@ filterButton.MouseButton1Click:Connect(function()
         filterIndex = 1
     end
 
-    filterButton.Text = "MÍNIMO: " .. filterLevels[filterIndex][1]
+    filterButton.Text =
+        "MÍNIMO: " .. filterLevels[filterIndex][1]
+
     renderResults()
 end)
 
@@ -437,7 +487,6 @@ search:GetPropertyChangedSignal("Text"):Connect(function()
     renderResults()
 end)
 
--- Rodapé
 local footer = Instance.new("TextLabel")
 footer.Size = UDim2.new(1, -20, 0, 20)
 footer.Position = UDim2.new(0, 10, 1, -23)
@@ -449,6 +498,7 @@ footer.TextSize = 9
 footer.Parent = main
 
 -- Arrastar painel pelo cabeçalho
+
 local dragging = false
 local dragStart
 local startPosition
@@ -456,6 +506,7 @@ local startPosition
 header.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
+
         dragging = true
         dragStart = input.Position
         startPosition = main.Position
@@ -465,16 +516,19 @@ end)
 header.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
+
         dragging = false
     end
 end)
 
-game:GetService("UserInputService").InputChanged:Connect(function(input)
+UserInputService.InputChanged:Connect(function(input)
     if dragging and (
         input.UserInputType == Enum.UserInputType.MouseMovement
         or input.UserInputType == Enum.UserInputType.Touch
     ) then
+
         local delta = input.Position - dragStart
+
         main.Position = UDim2.new(
             startPosition.X.Scale,
             startPosition.X.Offset + delta.X,
@@ -484,4 +538,4 @@ game:GetService("UserInputService").InputChanged:Connect(function(input)
     end
 end)
 
-print("[NVS EGG HUNTER 2.0] Interface carregada.")
+print("[NVS EGG HUNTER 2.1] Interface carregada.")
